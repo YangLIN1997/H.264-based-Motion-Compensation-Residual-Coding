@@ -1,0 +1,11 @@
+function [ DCT_residual_decode ] = IQuant( Quantization,QP,Qstep,inter)
+% In: 4*4 matrix
+% Out: 4*4 matrix
+  a=0.5;b=sqrt(2/5);
+PF=[a^2 a*b a^2 a*b;a*b b^2 a*b b^2
+    a^2 a*b a^2 a*b;a*b b^2 a*b b^2];
+qbits=15+floor(QP/6);
+MF=round((2^(qbits)*PF)/Qstep);
+      DCT_residual_decode...
+          =Quantization.*(ceil(Qstep.*PF*64))*2^(floor(QP/6)).*PF;
+end

@@ -1,0 +1,229 @@
+%% 
+% vsersion 1:
+% Movtion vecters are working
+% DCT
+% Quant
+% 4*4 block
+% lossy mv!
+% encode
+
+%% inter
+
+clc,clear,close all;
+tic
+%% load
+
+file='foreman_420.yuv';
+yuv_data = fread(fopen(file,'r'));   
+
+width=352;
+height=288;
+QP_intra=22;
+QP_inter=;
+
+%% Filter out the YUV data of the target frame  INTRA
+    
+frame_size = (1 + 0.25 * 2) * width * height;
+Y_size=width * height;
+UV_size=0.25 * width * height;
+
+nthFrame=1;
+
+intra_frame= yuv_data((nthFrame-1)*frame_size+1:nthFrame*frame_size);
+
+intra_Y=intra_frame(1:Y_size);
+intra_Y=reshape(intra_Y, width, height)';
+
+transmission=zeros(4,4,height*width/4/4,3);
+%% 2 nd frame: MV
+search_range=16; %+-8
+block_size=4; %4*4
+inter_Y=(zeros(height,width,10));
+residual=(zeros(height,width,3));
+new_frame=uint8(zeros(height,width,3));
+old_frame=uint8(zeros(height,width,3));
+%new_frame(:,:,1)=intra_Y;
+old_frame(:,:,1)=intra_Y;
+mv = zeros(width/block_size, height/block_size, 2,10);
+predict=uint8(zeros(height,width,3));
+
+for i = 1 : block_size : height
+    for j = 1 : block_size : width
+       DCT_r=DCT((double(old_frame(i:i+block_size-1,j:j+block_size-1,1))));  
+ Qua=Quant( DCT_r,QP_intra,0);  
+      DCT_residual_de=IQuant( Qua,QP_intra);
+ new_re=(IDCT(DCT_residual_de)); 
+[predict(i:i+block_size-1,j:j+block_size-1,1)] = uint8(new_re);
+    end 
+end
+
+reference=predict(:,:,1);
+yuv(:,:,1)=uint8(reference);
+subplot(3,3,4)
+imshow(yuv(:,:,1)),title('1st predict' );
+
+
+for nthFrame=2:3
+
+inter_frame= yuv_data((nthFrame-1)*frame_size+1:nthFrame*frame_size);
+inter_Y(:,:,nthFrame)=reshape(inter_frame(1:Y_size), width, height)';
+old_frame(:,:,nthFrame)=inter_Y(:,:,nthFrame);
+original=inter_Y(:,:,nthFrame);
+for i = 1 : block_size : height
+    for j = 1 : block_size : width
+        move1 = ceil(i/block_size);
+        move2 = ceil(j/block_size);
+[residual(i:i+block_size-1,j:j+block_size-1,nthFrame),mv(move2,move1,:,nthFrame)] = FMV(reference , original(i:i+block_size-1,j:j+block_size-1), block_size, search_range,i,j );
+%[residual(i:i+block_size-1,j:j+block_size-1,nthFrame),mv(move2,move1,:,nthFrame)] = threeMV(reference , original(i:i+block_size-1,j:j+block_size-1), block_size, search_range,i,j );
+%[residual(i:i+block_size-1,j:j+block_size-1,nthFrame),mv(move2,move1,:,nthFrame)] = HMV(reference , original(i:i+block_size-1,j:j+block_size-1), block_size, search_range,i,j );
+
+DCT_r=DCT(double(residual(i:i+block_size-1,j:j+block_size-1,nthFrame)));  
+ Qua=Quant( DCT_r,QP_inter,1);  
+      DCT_residual_de=IQuant( Qua,QP_inter);
+ new_re=(IDCT(DCT_residual_de)); 
+[predict(i:i+block_size-1,j:j+block_size-1,nthFrame)] = reconstruct( (reference),new_re,mv(move2,move1,:,nthFrame),search_range,i,j,0);
+    end
+end
+reference=predict(:,:,nthFrame);
+yuv=uint8(zeros(height,width,3));
+yuv(:,:,1)=uint8(reference);
+subplot(3,3,nthFrame+3)
+imshow(yuv(:,:,1)),title([num2str(nthFrame) ' predict'] );
+end
+
+
+%% 2nd frame: DCT
+
+residual(:,:, 1)=intra_Y;
+DCT_block_size=block_size;
+
+DCT_residual=(zeros(height,width,3));
+residual=double(residual);
+for nthFrame=1:3
+
+
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+
+        DCT_residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)...
+            =DCT( residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame));  
+      %  =int16([DCT_residual1(:,1),DCT_residual1(:,2),DCT_residual1(:,3),DCT_residual1(:,4)].*Ef);
+    end
+end
+
+end
+
+%% Quantization: inter
+
+
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+ Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,1)...
+ =Quant( DCT_residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,1),QP_intra,0);  
+
+    end
+end
+for nthFrame=2:3
+
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+ Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)...
+ =Quant( DCT_residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame),QP_inter,1);  
+    end
+end
+end
+%% Encode & Decode
+Quant_zig_de=zeros(DCT_block_size*DCT_block_size);
+for nthFrame=1:3
+
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+ Quant_zig...
+ =zigzag(Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)); 
+
+for n=1:DCT_block_size*DCT_block_size
+[ len, string ] = expgolomb( Quant_zig(n) );
+ Quant_zig_de(n)=deexpgolomb( string  );
+end
+
+Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame) ...
+    = izigzag(Quant_zig_de, DCT_block_size, DCT_block_size);
+    end
+end
+end
+
+%% Inverse Quantization
+DCT_residual_decode=zeros(height,width,3);
+
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+      DCT_residual_decode(i:i+DCT_block_size-1,j:j+DCT_block_size-1,1)...
+ =IQuant( Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,1),QP_intra);
+     
+    end
+end
+
+for nthFrame=2:3
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+      DCT_residual_decode(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)...
+ =IQuant( Quantization(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame),QP_inter);
+     
+    end
+end
+end
+
+%% Inverse Transform
+frame=uint8(zeros(height,width,10));
+
+%DCT_residual_decode=DCT_residual;
+new_residual=(zeros(height,width,nthFrame));
+for nthFrame=1:3
+for i = 1 : DCT_block_size : height
+    for j = 1 : DCT_block_size : width
+              new_residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)...
+            =IDCT( DCT_residual_decode(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame));  
+    end
+end
+end
+
+%% reconstruct
+
+tmp_frame=uint8(zeros(height,width));
+ref_int=uint8(new_residual(:,:,1));
+new_frame(:,:, 1)=new_residual(:,:,1);
+
+yuv(:,:,1)=new_frame(:,:,1);
+subplot(3,3,1)
+imshow(yuv(:,:,1)),title('1st' );
+MSE=sum(sum(double(old_frame(:,:,1)-new_frame(:,:,1)).^2))/(width*height);
+PSNR(1)=10*log10(255^2/MSE)
+
+for nthFrame=2:3
+    
+for i = 1 : block_size : width
+    for j = 1 : block_size : height
+[tmp_frame(j:j+block_size-1,i:i+block_size-1)] = reconstruct( ref_int,new_residual(j:j+block_size-1,i:i+block_size-1,nthFrame),mv(ceil(i/block_size),ceil(j/block_size),:,nthFrame),search_range,j,i,0);
+    end
+end
+ref_int=tmp_frame;
+new_frame(:,:, nthFrame)=uint8(tmp_frame);
+yuv(:,:,1)=new_frame(:,:,nthFrame);
+subplot(3,3,nthFrame)
+imshow(yuv(:,:,1)),title(num2str(nthFrame) );
+sum(sum((predict(:,:,nthFrame)-new_frame(:,:,nthFrame)).^2))
+
+MSE=sum(sum(double(old_frame(:,:,nthFrame)-new_frame(:,:,nthFrame)).^2))/(width*height);
+
+% maximum Level is 255 for the original 8 bits image
+PSNR(nthFrame)=10*log10(255^2/MSE)
+
+end
+
+sum(sum((old_frame(:,:,1)-new_frame(:,:,1)).^2));
+sum(sum((old_frame(:,:,2)-new_frame(:,:,2)).^2));
+sum(sum((old_frame(:,:,3)-new_frame(:,:,3)).^2));
+
+
+
+toc

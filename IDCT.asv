@@ -1,0 +1,37 @@
+function [ new_residual ] = IDCT( DCT_residual)
+DCT_residual0=(zeros(4,4));
+DCT_residual1=(zeros(4,4));
+  a=0.5;b=sqrt(2/5);
+  
+Ei=[a^2 a*b a^2 a*b;a*b b^2 a*b b^2;
+    a^2 a*b a^2 a*b;a*b b^2 a*b b^2];
+
+        DCT_residual_decode=DCT_residual.*Ei;
+        % 1 hori
+        DCT_residual0(1,:)=DCT_residual_decode(1,:)+DCT_residual_decode(3,:);
+        DCT_residual0(2,:)=DCT_residual_decode(1,:)-DCT_residual_decode(3,:);
+        DCT_residual0(3,:)=0.5*DCT_residual_decode(2,:)-DCT_residual_decode(4,:);
+        DCT_residual0(4,:)=DCT_residual_decode(i+1,j:j+DCT_block_size-1,nthFrame)+0.5*DCT_residual_decode(i+3,j:j+DCT_block_size-1,nthFrame);
+
+        DCT_residual1(1,:)=DCT_residual0(1,:)+DCT_residual0(4,:);
+        DCT_residual1(2,:)=DCT_residual0(2,:)+DCT_residual0(3,:);
+        DCT_residual1(3,:)=DCT_residual0(2,:)-DCT_residual0(3,:);
+        DCT_residual1(4,:)=DCT_residual0(1,:)-DCT_residual0(4,:);
+        
+
+  
+        % 2 vert
+        DCT_residual0(:,1)=DCT_residual1(:,1)+DCT_residual1(:,3);
+        DCT_residual0(:,2)=DCT_residual1(:,1)-DCT_residual1(:,3);
+        DCT_residual0(:,3)=0.5*DCT_residual1(:,2)-DCT_residual1(:,4);
+        DCT_residual0(:,4)=DCT_residual1(:,2)+0.5*DCT_residual1(:,4);
+        
+        DCT_residual1(:,1)=DCT_residual0(:,1)+DCT_residual0(:,4);
+        DCT_residual1(:,2)=DCT_residual0(:,2)+DCT_residual0(:,3);
+        DCT_residual1(:,3)=DCT_residual0(:,2)-DCT_residual0(:,3);
+        DCT_residual1(:,4)=DCT_residual0(:,1)-DCT_residual0(:,4);
+   
+        
+        new_residual(i:i+DCT_block_size-1,j:j+DCT_block_size-1,nthFrame)...
+        =[DCT_residual1(:,1)';DCT_residual1(:,2)';DCT_residual1(:,3)';DCT_residual1(:,4)']';
+end
